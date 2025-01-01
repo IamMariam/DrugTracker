@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Drug Tracker DApp</title>
+    <script src="https://cdn.jsdelivr.net/npm/web3@latest/dist/web3.min.js"></script>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #f4f4f9;
+        color: #333;
+      }
+
+      h1,
+      h2 {
+        color: #2c3e50;
+      }
+
+      .container {
+        width: 80%;
+        margin: 0 auto;
+        padding: 20px;
+      }
+
+      button {
+        background-color: #3498db;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        cursor: pointer;
+        font-size: 16px;
+        border-radius: 5px;
+        margin-top: 10px;
+      }
+
+      button:hover {
+        background-color: #2980b9;
+      }
+
+      input,
+      select {
+        width: 100%;
+        padding: 10px;
+        margin: 10px 0;
+        border-radius: 5px;
+        border: 1px solid #ccc;
+        font-size: 16px;
+      }
+
+      input[type="number"],
+      input[type="date"] {
+        width: 48%;
+        display: inline-block;
+      }
+
+      input[type="number"]:nth-child(odd),
+      input[type="date"]:nth-child(even) {
+        margin-right: 2%;
+      }
+
+      select {
+        width: 100%;
+      }
+
+      #walletAddress {
+        margin-top: 20px;
+        font-weight: bold;
+      }
+
+      .section {
+        margin-bottom: 40px;
+      }
+
+      .section h2 {
+        margin-bottom: 10px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="container">
+      <h1>Drug Tracker</h1>
+
+      <!-- Connect Wallet -->
+      <div class="section">
+        <button onclick="connectWallet()">Connect Wallet</button>
+        <p id="walletAddress"></p>
+      </div>
+
+      <!-- Add Drug (Admin only) -->
+      <div class="section">
+        <h2>Add Drug</h2>
+        <input id="drugName" placeholder="Drug Name" />
+        <input id="drugQuantity" type="number" placeholder="Quantity" />
+        <select id="drugStatus">
+          <option value="0">Pending</option>
+          <option value="1">Shipped</option>
+          <option value="2">Accepted</option>
+          <option value="3">Rejected</option>
+          <option value="4">Canceled</option>
+        </select>
+        <input id="drugLocation" placeholder="Location" />
+        <input id="expirationDate" type="date" />
+        <button onclick="addDrug()">Add Drug</button>
+      </div>
+
+      <!-- Update Drug Status -->
+      <div class="section">
+        <h2>Update Drug Status</h2>
+        <input id="updateDrugId" placeholder="Drug ID" />
+        <select id="newDrugStatus">
+          <option value="0">Pending</option>
+          <option value="1">Shipped</option>
+          <option value="2">Accepted</option>
+          <option value="3">Rejected</option>
+          <option value="4">Canceled</option>
+        </select>
+        <button onclick="updateDrugStatus()">Update Status</button>
+      </div>
+
+      <!-- Transfer Drug -->
+      <div class="section">
+        <h2>Transfer Drug</h2>
+        <input id="transferDrugId" placeholder="Drug ID" />
+        <input id="newOwner" placeholder="New Owner Address" />
+        <input id="transferQuantity" type="number" placeholder="Quantity" />
+        <button onclick="transferDrug()">Transfer Drug</button>
+      </div>
+
+      <!-- View Drug Details -->
+      <div class="section">
+        <h2>View Drug Details</h2>
+        <input id="viewDrugId" placeholder="Drug ID" />
+        <button onclick="getDrugDetails()">Get Details</button>
+        <p id="drugDetails"></p>
+      </div>
+    </div>
+
+    <script>
+      let web3;
+      let contract;
+      const contractAddress = "0x5B882836D9D312751E3469568EC44Ec282Ba85ae";
+      const abi = [
+        {
+          type: "constructor",
+          inputs: [],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
+          name: "addDrug",
+          inputs: [
+            {
+              name: "_name",
+              type: "string",
+              internalType: "string",
+            },
+            {
+              name: "_quantity",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "_status",
+              type: "uint8",
+              internalType: "enum DrugTracker.Status",
+            },
+            {
+              name: "_location",
+              type: "string",
+              internalType: "string",
+            },
+            {
+              name: "_expirationDate",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          outputs: [],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
+          name: "admin",
+          inputs: [],
+          outputs: [
+            {
+              name: "",
+              type: "address",
+              internalType: "address",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "checkExpiration",
+          inputs: [
+            {
+              name: "_drugId",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          outputs: [
+            {
+              name: "",
+              type: "bool",
+              internalType: "bool",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "drugCount",
+          inputs: [],
+          outputs: [
+            {
+              name: "",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "drugs",
+          inputs: [
+            {
+              name: "",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          outputs: [
+            {
+              name: "name",
+              type: "string",
+              internalType: "string",
+            },
+            {
+              name: "quantity",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "status",
+              type: "uint8",
+              internalType: "enum DrugTracker.Status",
+            },
+            {
+              name: "location",
+              type: "string",
+              internalType: "string",
+            },
+            {
+              name: "expirationDate",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "owner",
+              type: "address",
+              internalType: "address",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "getDrugCountByLocation",
+          inputs: [
+            {
+              name: "_location",
+              type: "string",
+              internalType: "string",
+            },
+          ],
+          outputs: [
+            {
+              name: "",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "getDrugCountByStatus",
+          inputs: [
+            {
+              name: "_status",
+              type: "uint8",
+              internalType: "enum DrugTracker.Status",
+            },
+          ],
+          outputs: [
+            {
+              name: "",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "getDrugDetails",
+          inputs: [
+            {
+              name: "_drugId",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          outputs: [
+            {
+              name: "",
+              type: "string",
+              internalType: "string",
+            },
+            {
+              name: "",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "",
+              type: "uint8",
+              internalType: "enum DrugTracker.Status",
+            },
+            {
+              name: "",
+              type: "string",
+              internalType: "string",
+            },
+            {
+              name: "",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "",
+              type: "address",
+              internalType: "address",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "getOwnerInventory",
+          inputs: [
+            {
+              name: "_owner",
+              type: "address",
+              internalType: "address",
+            },
+          ],
+          outputs: [
+            {
+              name: "",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "",
+              type: "string",
+              internalType: "string",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "owners",
+          inputs: [
+            {
+              name: "",
+              type: "address",
+              internalType: "address",
+            },
+          ],
+          outputs: [
+            {
+              name: "count",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "location",
+              type: "string",
+              internalType: "string",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "transferDrug",
+          inputs: [
+            {
+              name: "_drugId",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "_newOwner",
+              type: "address",
+              internalType: "address",
+            },
+            {
+              name: "_quantity",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          outputs: [],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
+          name: "updateDrugLocation",
+          inputs: [
+            {
+              name: "_drugId",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "_newLocation",
+              type: "string",
+              internalType: "string",
+            },
+          ],
+          outputs: [],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
+          name: "updateDrugQuantity",
+          inputs: [
+            {
+              name: "_drugId",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "_newQuantity",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          outputs: [],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
+          name: "updateDrugStatus",
+          inputs: [
+            {
+              name: "_drugId",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "_status",
+              type: "uint8",
+              internalType: "enum DrugTracker.Status",
+            },
+          ],
+          outputs: [],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "event",
+          name: "DrugTransferred",
+          inputs: [
+            {
+              name: "drugId",
+              type: "uint256",
+              indexed: false,
+              internalType: "uint256",
+            },
+            {
+              name: "from",
+              type: "address",
+              indexed: false,
+              internalType: "address",
+            },
+            {
+              name: "to",
+              type: "address",
+              indexed: false,
+              internalType: "address",
+            },
+            {
+              name: "quantity",
+              type: "uint256",
+              indexed: false,
+              internalType: "uint256",
+            },
+            {
+              name: "newLocation",
+              type: "string",
+              indexed: false,
+              internalType: "string",
+            },
+          ],
+          anonymous: false,
+        },
+      ];
+
+      // Connect MetaMask
+      async function connectWallet() {
+        if (window.ethereum) {
+          web3 = new Web3(window.ethereum);
+          console.log("created");
+          await window.ethereum.enable();
+          console.log("enabled");
+          document.getElementById("walletAddress").innerText =
+            "Wallet Connected: " + (await web3.eth.getAccounts())[0];
+          console.log("connecting");
+          contract = new web3.eth.Contract(abi, contractAddress);
+        } else {
+          alert("MetaMask is not installed!");
+        }
+      }
+
+      // Add Drug
+      async function addDrug() {
+        const name = document.getElementById("drugName").value;
+        const quantity = parseInt(
+          document.getElementById("drugQuantity").value
+        );
+        const status = parseInt(document.getElementById("drugStatus").value);
+        const location = document.getElementById("drugLocation").value;
+        const expirationDate =
+          new Date(document.getElementById("expirationDate").value).getTime() /
+          1000;
+
+        const accounts = await web3.eth.getAccounts();
+        console.log("Adding a drug to account ", accounts);
+        await contract.methods
+          .addDrug(name, quantity, status, location, expirationDate)
+          .send({ from: accounts[0] });
+        alert("Drug Added!");
+      }
+
+      async function updateDrugStatus() {
+        const drugId = parseInt(document.getElementById("updateDrugId").value);
+        const newStatus = parseInt(
+          document.getElementById("newDrugStatus").value
+        );
+
+        const accounts = await web3.eth.getAccounts();
+        await contract.methods
+          .updateDrugStatus(drugId, newStatus)
+          .send({ from: accounts[0] });
+        alert("Drug status updated!");
+      }
+
+      // Transfer Drug
+      async function transferDrug() {
+        const drugId = parseInt(
+          document.getElementById("transferDrugId").value
+        );
+        const newOwner = document.getElementById("newOwner").value;
+        const quantity = parseInt(
+          document.getElementById("transferQuantity").value
+        );
+
+        const accounts = await web3.eth.getAccounts();
+        await contract.methods
+          .transferDrug(drugId, newOwner, quantity)
+          .send({ from: accounts[0] });
+        alert("Drug transferred!");
+      }
+
+      // Get Drug Details
+      async function getDrugDetails() {
+        const drugId = parseInt(document.getElementById("viewDrugId").value);
+        const drug = await contract.methods.getDrugDetails(drugId).call();
+        document.getElementById("drugDetails").innerText = `
+          Name: ${drug[0]}
+          Quantity: ${drug[1]}
+          Status: ${
+            ["Pending", "Shipped", "Accepted", "Rejected", "Canceled"][drug[2]]
+          }
+          Location: ${drug[3]}
+          Expiration Date: ${new Date(drug[4] * 1000).toLocaleDateString()}
+          Owner: ${drug[5]}
+        `;
+      }
+    </script>
+  </body>
+</html>
